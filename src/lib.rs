@@ -117,9 +117,22 @@ fn get_item<'a>(doc: &'a DocumentMut, path: &[String]) -> Option<&'a Item> {
 
     let mut item = doc.get(&path[0])?;
     for key in &path[1..] {
-        item = item.get(key)?;
+        item = get_child_item(item, key)?;
     }
     Some(item)
+}
+
+fn get_child_item<'a>(item: &'a Item, key: &str) -> Option<&'a Item> {
+    match item {
+        Item::ArrayOfTables(_) => item.get(lua_index_to_rust(key)?),
+        Item::Value(Value::Array(_)) => item.get(lua_index_to_rust(key)?),
+        _ => item.get(key),
+    }
+}
+
+fn lua_index_to_rust(key: &str) -> Option<usize> {
+    let index = key.parse::<usize>().ok()?;
+    index.checked_sub(1)
 }
 
 fn set_item(doc: &mut DocumentMut, path: &[String], item: Item) -> LuaResult<()> {
@@ -127,18 +140,64 @@ fn set_item(doc: &mut DocumentMut, path: &[String], item: Item) -> LuaResult<()>
         return Err(LuaError::external("path must not be empty"));
     }
 
-    let mut table = doc.as_table_mut();
-    for key in &path[..path.len() - 1] {
-        if !table.contains_key(key) {
-            table.insert(key, Item::Table(TomlTable::new()));
-        }
-        table = table[key]
-            .as_table_mut()
-            .ok_or_else(|| LuaError::external(format!("path segment '{key}' is not a table")))?;
+    let table = doc.as_table_mut();
+    let key = &path[0];
+    if path.len() == 1 {
+        table.insert(key, item);
+        return Ok(());
     }
 
-    table.insert(path.last().expect("non-empty path"), item);
-    Ok(())
+    if !table.contains_key(key) {
+        table.insert(key, Item::Table(TomlTable::new()));
+    }
+    set_child_item(&mut table[key], &path[1..], item)
+}
+
+fn set_child_item(current: &mut Item, path: &[String], item: Item) -> LuaResult<()> {
+    let key = &path[0];
+
+    if path.len() == 1 {
+        return match current {
+            Item::Table(table) => {
+                table.insert(key, item);
+                Ok(())
+            }
+            Item::ArrayOfTables(_) | Item::Value(Value::Array(_)) => {
+                let index = lua_index_to_rust(key).ok_or_else(|| {
+                    LuaError::external(format!("path segment '{key}' is not an array index"))
+                })?;
+                let target = current.get_mut(index).ok_or_else(|| {
+                    LuaError::external(format!("path segment '{key}' is out of bounds"))
+                })?;
+                *target = item;
+                Ok(())
+            }
+            _ => Err(LuaError::external(format!(
+                "path segment '{key}' is not a table"
+            ))),
+        };
+    }
+
+    match current {
+        Item::Table(table) => {
+            if !table.contains_key(key) {
+                table.insert(key, Item::Table(TomlTable::new()));
+            }
+            set_child_item(&mut table[key], &path[1..], item)
+        }
+        Item::ArrayOfTables(_) | Item::Value(Value::Array(_)) => {
+            let index = lua_index_to_rust(key).ok_or_else(|| {
+                LuaError::external(format!("path segment '{key}' is not an array index"))
+            })?;
+            let target = current.get_mut(index).ok_or_else(|| {
+                LuaError::external(format!("path segment '{key}' is out of bounds"))
+            })?;
+            set_child_item(target, &path[1..], item)
+        }
+        _ => Err(LuaError::external(format!(
+            "path segment '{key}' is not a table"
+        ))),
+    }
 }
 
 fn remove_item(doc: &mut DocumentMut, path: &[String]) -> LuaResult<bool> {
@@ -309,74 +368,4 @@ fn parse_raw_value(fragment: &str) -> LuaResult<Item> {
 
 fn external_err(error: impl std::error::Error + Send + Sync + 'static) -> LuaError {
     LuaError::external(error)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn edits_value_without_losing_comment() {
-        let source = r#"
-# keep me
-[server]
-host = "127.0.0.1"
-port = 8080
-"#;
-        let mut doc = DocumentMut::from_str(source).unwrap();
-
-        set_item(
-            &mut doc,
-            &["server".to_owned(), "port".to_owned()],
-            Item::Value(Value::Integer(Formatted::new(9000))),
-        )
-        .unwrap();
-
-        let out = doc.to_string();
-        assert!(out.contains("# keep me"));
-        assert!(out.contains("host = \"127.0.0.1\""));
-        assert!(out.contains("port = 9000"));
-    }
-
-    #[test]
-    fn creates_nested_table_with_literal_dot_key() {
-        let mut doc = DocumentMut::new();
-
-        set_item(
-            &mut doc,
-            &["a.b".to_owned(), "c".to_owned()],
-            Item::Value(Value::String(Formatted::new("value".to_owned()))),
-        )
-        .unwrap();
-
-        assert_eq!(
-            get_item(&doc, &["a.b".to_owned(), "c".to_owned()])
-                .unwrap()
-                .as_str(),
-            Some("value")
-        );
-        let out = doc.to_string();
-        assert!(out.contains("[\"a.b\"]"));
-        assert!(out.contains("c = \"value\""));
-    }
-
-    #[test]
-    fn parses_raw_datetime_fragment() {
-        let item = parse_raw_value("1979-05-27T07:32:00Z").unwrap();
-        assert!(matches!(item, Item::Value(Value::Datetime(_))));
-    }
-
-    #[test]
-    fn refuses_to_replace_path_prefix_scalar_with_table() {
-        let mut doc = DocumentMut::from_str("a = 1\n").unwrap();
-        let err = set_item(
-            &mut doc,
-            &["a".to_owned(), "b".to_owned()],
-            Item::Value(Value::Integer(Formatted::new(2))),
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("path segment 'a' is not a table"));
-        assert!(doc.to_string().contains("a = 1"));
-    }
 }

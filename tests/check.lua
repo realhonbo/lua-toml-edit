@@ -35,15 +35,24 @@ assert(doc:contains("author.method") == true)
 assert(doc:contains("author.token") == true)
 assert(doc:contains("not_exists") == false)
 assert(doc:contains("author.not_exists") == false)
+assert(doc:contains("proxies.1.subdomain") == false)
+assert(doc:contains("proxies.2.subdomain") == true)
+assert(doc:contains("proxies.3.subdomain") == false)
 
 assert(doc:get("author.method") == "token")
 assert(doc:get("author.token") == "whatthefuck")
+assert(doc:get("proxies.1.name") == "ssh")
+assert(doc:get("proxies.2.subdomain") == "laotie666")
+assert(doc:get("proxies.3.subdomain") == nil)
 
 doc:set("server_port", 58000)
 assert(doc:get("server_port") == 58000)
 
 doc:set("author.token", "new_token_123")
 assert(doc:get("author.token") == "new_token_123")
+
+doc:set("proxies.2.subdomain", "whatthefuck")
+assert(doc:get("proxies.2.subdomain") == "whatthefuck")
 
 doc:set("uid", "abcdefg")
 assert(doc:get("uid") == "abcdefg")
@@ -90,6 +99,7 @@ assert(out:find("started_at = 1979%-05%-27T07:32:00Z"))
 assert(out:find("%[%[proxies%]%]"))
 assert(out:find('name = "ssh"', 1, true))
 assert(out:find('name = "webui"', 1, true))
+assert(out:find('subdomain = "whatthefuck"', 1, true))
 
 -- twice parse
 local reparsed = tomledit.parse(out)
@@ -98,6 +108,7 @@ assert(reparsed:get("server_address") == "edge.tomledit.com")
 assert(reparsed:get("server_port") == 58000)
 assert(reparsed:get("author.method") == "token")
 assert(reparsed:get("author.token") == "new_token_123")
+assert(reparsed:get("proxies.2.subdomain") == "whatthefuck")
 assert(reparsed:get("uid") == "abcdefg")
 assert(reparsed:get("enable_tls") == true)
 assert(reparsed:get("retry_count") == 3)
@@ -109,7 +120,6 @@ assert(reparsed_tags[1] == "edge")
 assert(reparsed_tags[2] == "frp")
 assert(reparsed_tags[3] == "toml")
 
--- TODO:
 local ok1, v1 = pcall(function()
     return doc:get("proxies.1.name")
 end)
@@ -119,6 +129,7 @@ end)
 
 assert(ok1 == true)
 assert(ok2 == true)
+assert(v1 == "ssh")
 
 -- table
 assert(#v2 == 2)
@@ -131,6 +142,6 @@ assert(v2[2].name == "webui")
 assert(v2[2].type == "http")
 assert(v2[2].ip == "127.0.0.1")
 assert(v2[2].port == 80)
-assert(v2[2].subdomain == "laotie666")
+assert(v2[2].subdomain == "whatthefuck")
 
-print("ok")
+print("\nAll check passed!\n")
