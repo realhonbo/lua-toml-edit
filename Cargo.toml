@@ -1,14 +1,27 @@
 [package]
-name = "toml_edit"
-version = "0.1.0"
+name = "lua-toml-edit"
+version = "0.2.6"
 edition = "2021"
 license = "MIT"
 description = "lua native module for format-preserving TOML edits"
+repository = "https://github.com/realhonbo/lua-toml-edit"
+readme = "README.md"
+keywords = ["lua", "toml", "toml-edit"]
+categories = ["api-bindings", "config"]
 
 [lib]
 name = "toml_edit"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["lua51"]
+lua51 = ["mlua/lua51"]
+lua52 = ["mlua/lua52"]
+lua53 = ["mlua/lua53"]
+lua54 = ["mlua/lua54"]
+luajit = ["mlua/luajit"]
+luajit52 = ["mlua/luajit52"]
+
 [dependencies]
-mlua = { version = "0.10", features = ["lua51", "module", "macros"] }
-toml_edit = { version = "0.22", features = ["parse"] }
+mlua = { version = "0.10", default-features = false, features = ["module", "macros"] }
+toml_edit_crate = { package = "toml_edit", version = "0.22", features = ["parse"] }

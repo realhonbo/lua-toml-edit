@@ -144,4 +144,17 @@ assert(v2[2].ip == "127.0.0.1")
 assert(v2[2].port == 80)
 assert(v2[2].subdomain == "whatthefuck")
 
+assert(doc:remove("proxies.2.subdomain") == true)
+assert(doc:get("proxies.2.subdomain") == nil)
+assert(doc:contains("proxies.2.subdomain") == false)
+assert(doc:remove("proxies.2.subdomain") == false)
+assert(doc:remove("proxies.3.subdomain") == false)
+
+assert(doc:remove("tags.2") == true)
+local trimmed_tags = doc:get("tags")
+assert(#trimmed_tags == 2)
+assert(trimmed_tags[1] == "edge")
+assert(trimmed_tags[2] == "toml")
+assert(doc:remove("tags.9") == false)
+
 print("\nAll check passed!\n")

@@ -3,7 +3,9 @@ use mlua::{
     UserDataMethods, Value as LuaValue,
 };
 use std::str::FromStr;
-use toml_edit::{Array, DocumentMut, Formatted, InlineTable, Item, Table as TomlTable, Value};
+use toml_edit_crate::{
+    Array, DocumentMut, Formatted, InlineTable, Item, Table as TomlTable, Value,
+};
 
 #[derive(Clone)]
 struct RawTomlValue {
@@ -205,15 +207,66 @@ fn remove_item(doc: &mut DocumentMut, path: &[String]) -> LuaResult<bool> {
         return Err(LuaError::external("path must not be empty"));
     }
 
-    let mut table = doc.as_table_mut();
-    for key in &path[..path.len() - 1] {
-        match table.get_mut(key).and_then(Item::as_table_mut) {
-            Some(next) => table = next,
-            None => return Ok(false),
-        }
+    let table = doc.as_table_mut();
+    let key = &path[0];
+    if path.len() == 1 {
+        return Ok(table.remove(key).is_some());
     }
 
-    Ok(table.remove(path.last().expect("non-empty path")).is_some())
+    let Some(item) = table.get_mut(key) else {
+        return Ok(false);
+    };
+    remove_child_item(item, &path[1..])
+}
+
+fn remove_child_item(current: &mut Item, path: &[String]) -> LuaResult<bool> {
+    let key = &path[0];
+
+    if path.len() == 1 {
+        return match current {
+            Item::Table(table) => Ok(table.remove(key).is_some()),
+            Item::ArrayOfTables(array) => {
+                let index = lua_index_to_rust(key).ok_or_else(|| {
+                    LuaError::external(format!("path segment '{key}' is not an array index"))
+                })?;
+                if index >= array.len() {
+                    return Ok(false);
+                }
+                array.remove(index);
+                Ok(true)
+            }
+            Item::Value(Value::Array(array)) => {
+                let index = lua_index_to_rust(key).ok_or_else(|| {
+                    LuaError::external(format!("path segment '{key}' is not an array index"))
+                })?;
+                if index >= array.len() {
+                    return Ok(false);
+                }
+                array.remove(index);
+                Ok(true)
+            }
+            _ => Ok(false),
+        };
+    }
+
+    match current {
+        Item::Table(table) => {
+            let Some(item) = table.get_mut(key) else {
+                return Ok(false);
+            };
+            remove_child_item(item, &path[1..])
+        }
+        Item::ArrayOfTables(_) | Item::Value(Value::Array(_)) => {
+            let index = lua_index_to_rust(key).ok_or_else(|| {
+                LuaError::external(format!("path segment '{key}' is not an array index"))
+            })?;
+            let Some(item) = current.get_mut(index) else {
+                return Ok(false);
+            };
+            remove_child_item(item, &path[1..])
+        }
+        _ => Ok(false),
+    }
 }
 
 fn lua_to_item(value: LuaValue) -> LuaResult<Item> {
