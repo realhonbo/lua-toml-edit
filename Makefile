@@ -20,7 +20,6 @@ all: release
 release:
 	cargo build --release $(CARGO_BUILD_FLAGS)
 	cp $(LIB) $(MODULE)
-	cp $(LIB) tests/$(MODULE)
 
 test: release
 	$(LUA) tests/check.lua
@@ -28,4 +27,3 @@ test: release
 clean:
 	cargo clean
 	rm -f $(MODULE)
-	rm -f tests/$(MODULE)

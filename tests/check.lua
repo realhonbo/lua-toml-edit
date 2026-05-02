@@ -51,6 +51,9 @@ assert(doc:get("server_port") == 58000)
 doc:set("author.token", "new_token_123")
 assert(doc:get("author.token") == "new_token_123")
 
+doc:set({'proxies', 2, 'subdomain'}, "whatthehell")
+assert(doc:get({'proxies', 2, 'subdomain'}) == "whatthehell")
+
 doc:set("proxies.2.subdomain", "whatthefuck")
 assert(doc:get("proxies.2.subdomain") == "whatthefuck")
 
