@@ -22,7 +22,7 @@ release:
 	cp $(LIB) $(MODULE)
 
 test: release
-	$(LUA) tests/check.lua
+	LUA_CPATH="./?.so;;" $(LUA) tests/check.lua
 
 clean:
 	cargo clean

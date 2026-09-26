@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lua:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - feature: lua51
+            lua: lua5.1
+            headers: liblua5.1-0-dev
+          - feature: lua52
+            lua: lua5.2
+            headers: liblua5.2-dev
+          - feature: lua53
+            lua: lua5.3
+            headers: liblua5.3-dev
+          - feature: lua54
+            lua: lua5.4
+            headers: liblua5.4-dev
+          - feature: luajit
+            lua: luajit
+            headers: libluajit-5.1-dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config ${{ matrix.lua }} ${{ matrix.headers }} luarocks
+      - name: Check formatting and rockspec
+        run: |
+          cargo fmt --check
+          luarocks lint lua-toml-edit-0.2.7-1.rockspec
+      - name: Build and test
+        run: make test LUA_VERSION=${{ matrix.feature }} LUA=${{ matrix.lua }}
+      - name: Verify LuaRocks installation
+        if: matrix.feature == 'lua51'
+        run: |
+          rock_tree="$RUNNER_TEMP/test-rocks"
+          eval "$(luarocks --lua-version=5.1 path --tree "$rock_tree")"
+          luarocks --lua-version=5.1 make lua-toml-edit-0.2.7-1.rockspec --tree "$rock_tree"
+          cd "$RUNNER_TEMP"
+          lua5.1 "$GITHUB_WORKSPACE/tests/check.lua"

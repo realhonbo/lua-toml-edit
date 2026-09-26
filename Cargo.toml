@@ -1,6 +1,6 @@
 [package]
 name = "lua-toml-edit"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 license = "MIT"
 description = "lua native module for format-preserving TOML edits"
